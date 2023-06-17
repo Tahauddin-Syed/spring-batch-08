@@ -1,0 +1,28 @@
+
+
+
+
+server:
+  port: 8002
+
+spring:
+  application:
+    name: Spring-Batch-App-08
+  datasource:
+    url: jdbc:mysql://localhost:3306/udemy_batch
+    username: {  }
+    password: {  }
+    driverClassName: com.mysql.cj.jdbc.Driver
+  jpa:
+    spring.jpa.database-platform: org.hibernate.dialect.MySQL8Dialect
+    show_sql: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: false
+  batch:
+    jdbc:
+      initialize-schema: never
+    job:
+      enabled: false
