@@ -42,4 +42,7 @@ public class Customer  {
     @UpdateTimestamp
     private Timestamp updatedDate;
 
+    @Column(name = "Hash_Value")
+    private String hashValue;
+
 }
