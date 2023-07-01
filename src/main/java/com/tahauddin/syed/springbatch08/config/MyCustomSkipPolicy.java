@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
 
 @RequiredArgsConstructor
 @Slf4j
-@Component
+//@Component
 public class MyCustomSkipPolicy /*implements SkipListener<Customer, Customer>*/ {
 
     private final BatchLogsRepo batchLogsRepo;

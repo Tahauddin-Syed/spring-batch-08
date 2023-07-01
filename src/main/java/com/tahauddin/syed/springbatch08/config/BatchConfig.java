@@ -8,13 +8,17 @@ import com.tahauddin.syed.springbatch08.domain.repo.CustomerRepository;
 import com.tahauddin.syed.springbatch08.exceptions.MyOwnException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.batch.core.Job;
-import org.springframework.batch.core.Step;
+import org.springframework.batch.core.*;
 import org.springframework.batch.core.job.builder.JobBuilder;
+import org.springframework.batch.core.job.flow.*;
+import org.springframework.batch.core.job.flow.support.SimpleFlow;
 import org.springframework.batch.core.launch.support.RunIdIncrementer;
 import org.springframework.batch.core.repository.JobRepository;
+import org.springframework.batch.core.scope.context.ChunkContext;
+import org.springframework.batch.core.step.builder.FlowStepBuilder;
 import org.springframework.batch.core.step.builder.StepBuilder;
 import org.springframework.batch.core.step.skip.AlwaysSkipItemSkipPolicy;
+import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.item.ItemProcessor;
 import org.springframework.batch.item.ItemWriter;
 import org.springframework.batch.item.data.RepositoryItemReader;
@@ -22,6 +26,7 @@ import org.springframework.batch.item.data.RepositoryItemWriter;
 import org.springframework.batch.item.data.builder.RepositoryItemWriterBuilder;
 import org.springframework.batch.item.database.JdbcBatchItemWriter;
 import org.springframework.batch.item.database.builder.JdbcBatchItemWriterBuilder;
+import org.springframework.batch.repeat.RepeatStatus;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.TaskExecutor;
@@ -35,10 +40,7 @@ import javax.sql.DataSource;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Configuration
 @RequiredArgsConstructor
@@ -91,8 +93,30 @@ public class BatchConfig {
     public Job job() {
         return jobBuilder()
                 .incrementer(new RunIdIncrementer())
-                .start(step())
-        //        .listener(myCustomSkipPolicy())
+                .start(step()).on(ExitStatus.COMPLETED.getExitCode()).to(stepTwo())
+                .from(step()).on(ExitStatus.FAILED.getExitCode()).to(stepThree()).end()
+                .build();
+    }
+
+    @Bean("CompletionStep")
+    public Step stepTwo() {
+        return stepBuilder()
+                .tasklet((contribution, chunkContext) -> {
+                    log.info("In Tasklet Step After COMPLETED First Step");
+                    return RepeatStatus.FINISHED;
+                })
+                .transactionManager(platformTransactionManager)
+                .build();
+    }
+
+    @Bean("CompletionStepThree")
+    public Step stepThree() {
+        return stepBuilder()
+                .tasklet((contribution, chunkContext) -> {
+                    log.info("In Tasklet Step After FAILED First Step");
+                    return RepeatStatus.FINISHED;
+                })
+                .transactionManager(platformTransactionManager)
                 .build();
     }
 
@@ -108,11 +132,26 @@ public class BatchConfig {
                 .skip(Exception.class)
                 .skipLimit(Integer.MAX_VALUE)
          //       .skipPolicy(new AlwaysSkipItemSkipPolicy())
-                .listener(myCustomSkipPolicy())
+                .listener(new StepExecutionListener() {
+                    @Override
+                    public void beforeStep(StepExecution stepExecution) {
+                        log.info("Before Executing Step..");
+                    }
+
+                    @Override
+                    public ExitStatus afterStep(StepExecution stepExecution) {
+                        log.info("After Executing Step");
+                        return ExitStatus.COMPLETED;
+                    }
+                })
                 .transactionManager(platformTransactionManager)
                 .taskExecutor(taskExecutor())
                 .build();
     }
+
+ /*   public FlowStepBuilder flowOne(){
+        return stepBuilder().flow(new SimpleFlow(""));
+    }*/
 
 
     @Bean
@@ -138,10 +177,13 @@ public class BatchConfig {
            String hashValue = Hashing.sha256().hashString(item.getFirstName(), StandardCharsets.UTF_8).toString();
     //        String hashValue = "Some Hash Value..";
             item.setHashValue(hashValue);
-            log.info(" -- In Processor -- Hash Value :: {} for Id :: {}", hashValue,item.getId());
+            if(item.getFirstName().equalsIgnoreCase("Syed")) {
+                throw new RuntimeException();
+            }
+           /* log.info(" -- In Processor -- Hash Value :: {} for Id :: {}", hashValue,item.getId());
             log.info(" -- In Processor -- Current Thread Group Name :: {}", Thread.currentThread().getThreadGroup().getName());
             log.info(" -- In Processor -- Current Thread Name :: {}", Thread.currentThread().getName());
-            return item;
+           */ return item;
         };
     }
 
@@ -167,9 +209,9 @@ public class BatchConfig {
 
     @Bean
     public JdbcBatchItemWriter<Customer> batchItemWriter() {
-        log.info(" -- In Writer -- Current Thread Group Name :: {}", Thread.currentThread().getThreadGroup().getName());
+      /*  log.info(" -- In Writer -- Current Thread Group Name :: {}", Thread.currentThread().getThreadGroup().getName());
         log.info(" -- In Writer -- Current Thread Name :: {}", Thread.currentThread().getName());
-        JdbcBatchItemWriter<Customer> jdbcBatchItemWriter = new JdbcBatchItemWriter<>();
+       */ JdbcBatchItemWriter<Customer> jdbcBatchItemWriter = new JdbcBatchItemWriter<>();
         //   jdbcBatchItemWriter.setSql(CUSTOMER_UPDATE_QUERY);
         jdbcBatchItemWriter.setSql(CUSTOMER_UPDATE_QUERY_HASH);
         jdbcBatchItemWriter.setDataSource(dataSource);
@@ -221,7 +263,6 @@ public class BatchConfig {
             map.put("Hash_Value", item.getHashValue());
             return new MapSqlParameterSource(map);
         });
-
         return jdbcBatchItemWriter;
     }
 
